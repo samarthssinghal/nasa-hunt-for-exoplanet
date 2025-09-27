@@ -4,7 +4,7 @@ cumulative_2025.09.21_17.22.39
     - Kepler Objects of Interest (KOI)
     - https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=cumulative
 
-cumulative_2025.09.21_17.22.39
+TOI_2025.09.21_17.24.45
     - TESS Objects of Interest (TOI)
     - https://exoplanetarchive.ipac.caltech.edu/cgi-bin/TblView/nph-tblView?app=ExoTbls&config=TOI
 
