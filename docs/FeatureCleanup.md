@@ -18,3 +18,22 @@
 | **Stellar Radius [Solar radii]**      | `koi_dispositions`          | `tfopwg_disp`  | `disposition`               |
 
 
+# Disposition Cleanup 
+- **KOI (Kepler)**: Use `koi_dispositions` 
+  - FALSE POSITIVE
+  - CONFIRMED
+  - CANDIDATE
+
+- **TOI (TESS)**: Use `tfopwg_disp` (descriptions on the website) 
+  - PC : Planetary candidate
+  - FP : False Positive
+  - CP : Confirmed Planet 
+  - KP : Known Planet
+  - APC : Ambiguous planetary candidate
+  - FA : False alarm
+
+- k2 Planets & Candidates: Use `disposition` column.
+  - CONFIRMED
+  - CANDIDATE
+  - FALSE POSITIVE
+  - REFUTED
