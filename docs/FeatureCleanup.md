@@ -15,3 +15,6 @@
 | **Stellar Effective Temperature [K]** | `koi_steff`                 | `st_teff`      | `st_teff`                   |
 | **Stellar Surface Gravity [log g]**   | `koi_slogg`                 | `st_logg`      | `st_logg`                   |
 | **Stellar Radius [Solar radii]**      | `koi_srad`                  | `st_rad`       | `st_rad`                    |
+| **Stellar Radius [Solar radii]**      | `koi_dispositions`          | `tfopwg_disp`  | `disposition`               |
+
+
