@@ -37,3 +37,7 @@
   - CANDIDATE
   - FALSE POSITIVE
   - REFUTED
+
+# Feature Selection 
+
+* in the k2 dataset , 'insolation_flux', 'equilibrium_temp' are mostly None, so we will remove them from all datasets
