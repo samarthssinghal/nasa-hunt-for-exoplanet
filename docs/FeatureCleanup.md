@@ -38,6 +38,14 @@
   - FALSE POSITIVE
   - REFUTED
 
+## Training Data 
+- We will only keep CONFIRMED and CANDIDATE as positive samples in KOI 
+- We will only keep PC, CP, KP as positive samples in TO
+- Based on the paper "Assessment of Ensemble-Based Machine Learning Algorithms for Exoplanet Identification" Transform dispositions:
+    - CONFIRMED, CP, KP : 0 
+    - CANDIDATE, PC : 1
+  
+
 # Feature Selection 
 
 * in the k2 dataset , 'insolation_flux', 'equilibrium_temp' are mostly None, so we will remove them from all datasets
