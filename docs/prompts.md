@@ -45,6 +45,9 @@ schema_map = {
 
 
 # question : in the common fields which units need to be converted
+transit_depth
+
+
 
 
 
