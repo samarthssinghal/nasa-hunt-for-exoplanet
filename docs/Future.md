@@ -1,0 +1,1 @@
+1. For now dropping na values, we can use a median fill strategy later
