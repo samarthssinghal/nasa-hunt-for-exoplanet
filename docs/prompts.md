@@ -42,3 +42,9 @@ schema_map = {
 }
 
 # question : using the mapping, give a code snippet to standardize the features in each file
+
+
+# question : in the common fields which units need to be converted
+
+
+
