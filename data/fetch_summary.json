@@ -1,0 +1,41 @@
+{
+  "timestamp": "2025-10-04T14:17:39.056332",
+  "missions": {
+    "TESS_TOI": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    },
+    "Kepler_KOI": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    },
+    "K2_Candidates": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    },
+    "JWST_Confirmations": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    },
+    "NEOSSat_CSA": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    },
+    "General_Updates": {
+      "rows": 0,
+      "columns": 0,
+      "success": false,
+      "filename": null
+    }
+  }
+}
