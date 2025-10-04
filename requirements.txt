@@ -7,3 +7,4 @@ seaborn
 google-search-results
 python-dotenv
 requests
+streamlit
