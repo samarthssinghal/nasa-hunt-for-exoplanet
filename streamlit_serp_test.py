@@ -14,19 +14,19 @@ from dotenv import load_dotenv
 from serpapi import GoogleSearch
 import requests
 from urllib.parse import urlparse
-# import plotly.express as px
-# import plotly.graph_objects as go
+import plotly.express as px
+import plotly.graph_objects as go
+import numpy as np
+from data_preprocessing_enhanced import (
+    standardize_koi_data, standardize_toi_data, standardize_k2_data,
+    engineer_features, handle_missing_values
+)
 
 # Load environment variables
 load_dotenv()
 
-# Page configuration
-st.set_page_config(
-    page_title="🔍 Exoplanet Data Hunter",
-    page_icon="🌟",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Note: Page configuration is handled by app.py in multi-page mode
+# This configuration is only used when running this file standalone
 
 # Custom CSS
 st.markdown("""
@@ -66,328 +66,425 @@ class StreamlitSerpTester:
         self.data_dir = os.getenv('DATA_DIR', 'data')
         os.makedirs(self.data_dir, exist_ok=True)
         
-        # Predefined search configurations for different mission types
+        # Initialize session state
+        self.init_session_state()
+        
+        # Enhanced search configurations based on NASA Space Apps Challenge resources
         self.search_configs = {
+            "All Relevant Exoplanet Data": {
+                "keywords": ["exoplanet dataset csv", "exoplanet catalog download", "planetary systems data",
+                            "NASA exoplanet archive", "confirmed planets list", "exoplanet database",
+                            "transit photometry data", "radial velocity measurements", "exoplanet parameters",
+                            "KOI TOI catalog", "habitable zone planets", "JWST TESS Kepler data"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov", "stsci.edu", "exoplanet.eu"],
+                "filetypes": ["csv", "txt", "fits", "json"],
+                "description": "Comprehensive search for all exoplanet datasets across missions and catalogs"
+            },
             "Kepler Objects of Interest (KOI)": {
-                "keywords": ["Kepler Objects of Interest", "KOI", "Kepler exoplanet", "kepler disposition"],
-                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov"],
-                "filetypes": ["csv", "txt"],
-                "description": "Comprehensive list of confirmed exoplanets, planetary candidates, and false positives from Kepler mission"
+                "keywords": ["Kepler Objects of Interest", "KOI", "Kepler exoplanet", "kepler disposition", 
+                            "Disposition Using Kepler Data", "kepler transits", "kepler planetary candidates",
+                            "kepler false positives", "kepler confirmed planets"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov", "mast.stsci.edu"],
+                "filetypes": ["csv", "txt", "fits"],
+                "description": "Comprehensive list of confirmed exoplanets, planetary candidates, and false positives from Kepler mission. See column 'Disposition Using Kepler Data' for classification."
             },
             "TESS Objects of Interest (TOI)": {
-                "keywords": ["TESS Objects of Interest", "TOI", "TESS exoplanet", "TFOPWG Disposition"],
-                "sites": ["exoplanetarchive.ipac.caltech.edu", "tess.mit.edu"],
-                "filetypes": ["csv", "txt"],
-                "description": "Confirmed exoplanets, planetary candidates, and false positives from TESS mission"
+                "keywords": ["TESS Objects of Interest", "TOI", "TESS exoplanet", "TFOPWG Disposition",
+                            "TESS planetary candidates", "TESS false positives", "TESS ambiguous planetary candidates",
+                            "TESS known planets", "TESS transits", "TESS PC", "TESS FP", "TESS APC", "TESS KP"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "tess.mit.edu", "mast.stsci.edu"],
+                "filetypes": ["csv", "txt", "fits"],
+                "description": "All confirmed exoplanets, planetary candidates (PC), false positives (FP), ambiguous planetary candidates (APC), and known planets (KP) from TESS. See column 'TFOPWG Disposition' for classification."
             },
             "K2 Planets and Candidates": {
-                "keywords": ["K2 exoplanet candidates", "K2 planets", "Archive Disposition", "K2 mission"],
-                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov"],
-                "filetypes": ["csv", "txt"],
-                "description": "Comprehensive list from K2 mission with Archive Disposition classifications"
+                "keywords": ["K2 exoplanet candidates", "K2 planets", "Archive Disposition", "K2 mission",
+                            "K2 transits", "K2 confirmed exoplanets", "K2 false positives", "K2 planetary candidates"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov", "keplerscience.arc.nasa.gov"],
+                "filetypes": ["csv", "txt", "fits"],
+                "description": "Comprehensive list from K2 mission with Archive Disposition classifications for confirmed exoplanets, candidates, and false positives."
             },
             "JWST Exoplanet Data": {
-                "keywords": ["JWST exoplanet", "James Webb exoplanet", "JWST atmospheric", "JWST transit"],
-                "sites": ["mast.stsci.edu", "jwst.nasa.gov", "exoplanetarchive.ipac.caltech.edu"],
-                "filetypes": ["csv", "fits", "txt"],
-                "description": "Latest exoplanet observations and atmospheric data from James Webb Space Telescope"
+                "keywords": ["JWST exoplanet", "James Webb exoplanet", "JWST atmospheric", "JWST transit",
+                            "JWST spectroscopy", "JWST transmission spectra", "JWST emission spectra",
+                            "Webb exoplanet observations", "JWST exoplanet atmospheres", "JWST biosignatures"],
+                "sites": ["mast.stsci.edu", "jwst.nasa.gov", "exoplanetarchive.ipac.caltech.edu", "stsci.edu"],
+                "filetypes": ["csv", "fits", "txt", "json"],
+                "description": "Atmospheric and transit observations from James Webb Space Telescope, including spectroscopy data."
             },
-            "NEOSSat Astronomy Data": {
-                "keywords": ["NEOSSat exoplanet", "NEOSSat astronomy", "Canadian Space Agency exoplanet"],
-                "sites": ["donnees-data.asc-csa.gc.ca", "asc-csa.gc.ca"],
-                "filetypes": ["csv", "txt"],
-                "description": "Astronomical data from Canada's Near-Earth Object Surveillance Satellite"
+            "NEOSSat Exoplanet Targets": {
+                "keywords": ["NEOSSat", "NEOSSAT exoplanet", "Canadian Space Agency", "microvariability",
+                            "NEOSSat astronomy data", "space telescope asteroids", "NEOSSat photometry",
+                            "CSA exoplanet", "Near Earth Object Surveillance Satellite"],
+                "sites": ["donnees-data.asc-csa.gc.ca", "asc-csa.gc.ca", "open.canada.ca"],
+                "filetypes": ["csv", "txt", "fits"],
+                "description": "Astronomical images and exoplanet observations from Canadian NEOSSat mission."
             },
-            "Latest Confirmed Exoplanets": {
-                "keywords": ["latest confirmed exoplanets", "new exoplanet discoveries", "exoplanet confirmation"],
-                "sites": ["exoplanetarchive.ipac.caltech.edu", "nasa.gov"],
-                "filetypes": ["csv", "txt"],
-                "description": "Most recent confirmed exoplanet discoveries and updates"
+            "Machine Learning Datasets": {
+                "keywords": ["exoplanet machine learning", "exoplanet detection ML", "ensemble algorithms exoplanet",
+                            "supervised learning exoplanets", "exoplanet classification dataset", "transit photometry ML",
+                            "exoplanet preprocessing techniques", "exoplanet feature engineering"],
+                "sites": ["arxiv.org", "github.com", "kaggle.com", "exoplanetarchive.ipac.caltech.edu"],
+                "filetypes": ["csv", "txt", "json", "pkl", "h5"],
+                "description": "Preprocessed datasets and ML-ready data for exoplanet detection and classification."
+            },
+            "Ground-Based Transit Surveys": {
+                "keywords": ["SuperWASP exoplanet", "WASP planets", "HATNet exoplanet", "HAT-P planets",
+                            "CoRoT exoplanet", "OGLE transit", "XO exoplanet", "TrES exoplanet", 
+                            "KELT exoplanet", "ground-based transit survey", "photometric survey exoplanets"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "superwasp.org", "hatsurveys.org"],
+                "filetypes": ["csv", "txt", "fits", "dat"],
+                "description": "Data from ground-based transit surveys: SuperWASP, HATNet, CoRoT, OGLE, XO, TrES, KELT."
+            },
+            "TCE & Pipeline Data": {
+                "keywords": ["TCE threshold crossing event", "Kepler pipeline", "TESS pipeline",
+                            "Data Validation Report", "DVR exoplanet", "vetting metrics", "transit SNR",
+                            "koi_score", "planet confidence", "false positive probability"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "mast.stsci.edu", "archive.stsci.edu"],
+                "filetypes": ["csv", "xml", "pdf", "fits"],
+                "description": "Pipeline outputs including TCEs, vetting metrics, and confidence scores."
+            },
+            "Alternative Planet Catalogs": {
+                "keywords": ["EPIC ID K2", "TIC TESS Input Catalog", "Kepler numbers confirmed",
+                            "validated planets", "planet host star", "stellar parameters exoplanet",
+                            "habitable zone planets", "Earth-like exoplanets", "rocky planets catalog"],
+                "sites": ["exoplanetarchive.ipac.caltech.edu", "exoplanet.eu", "exoplanets.org"],
+                "filetypes": ["csv", "txt", "json", "xml"],
+                "description": "Alternative naming systems: EPIC IDs (K2), TIC numbers (TESS), confirmed planet catalogs."
             }
         }
     
-    def build_search_query(self, mission_type, custom_keywords="", year="2024-2025"):
-        """Build optimized search query for specific mission type"""
-        config = self.search_configs.get(mission_type, {})
+    def init_session_state(self):
+        """Initialize session state variables"""
+        if 'search_history' not in st.session_state:
+            st.session_state.search_history = []
         
-        # Start with mission-specific keywords
-        keywords = config.get("keywords", [])
-        if custom_keywords:
-            keywords.extend([kw.strip() for kw in custom_keywords.split(",")])
-        
-        # Build query components
-        keyword_part = f'"{keywords[0]}"' if keywords else ""
-        if len(keywords) > 1:
-            keyword_part += f" OR {' OR '.join([f'"{kw}"' for kw in keywords[1:3]])}"
-        
-        # Add temporal constraint
-        temporal_part = f"{year}"
-        
-        # Add site restrictions
-        sites = config.get("sites", [])
-        site_part = f"site:{' OR site:'.join(sites)}" if sites else ""
-        
-        # Add filetype preference
-        filetypes = config.get("filetypes", ["csv"])
-        filetype_part = f"filetype:{filetypes[0]}" if filetypes else ""
-        
-        # Combine query parts
-        query_parts = [p for p in [keyword_part, temporal_part, site_part, filetype_part] if p]
-        return " ".join(query_parts)
+        if 'user_preferences' not in st.session_state:
+            st.session_state.user_preferences = {
+                'max_results': 50,
+                'preferred_sites': ['exoplanetarchive.ipac.caltech.edu', 'nasa.gov'],
+                'file_formats': ['csv', 'txt'],
+                'save_results': True,
+                'auto_download': False,
+                'preprocessing_defaults': {
+                    'standardize_cols': True,
+                    'handle_missing': True,
+                    'engineer_feats': False,
+                    'normalize_data': False,
+                    'remove_outliers': False,
+                    'balance_classes': False
+                }
+            }
     
-    def search_serp(self, query, num_results=10):
-        """Execute Serp API search"""
+    def search_serp(self, query, max_results=10):
+        """Search using SERP API with enhanced error handling and AI Overview"""
+        if not self.api_key:
+            st.error("SERPAPI_KEY not found in environment variables!")
+            return None
+        
         try:
             params = {
                 "engine": "google",
                 "q": query,
                 "api_key": self.api_key,
-                "num": num_results
+                "num": min(max_results, 100),  # Google search limit
+                "hl": "en",  # Enable AI Overview for English
+                "gl": "us"   # Country for AI Overview support
             }
             
             search = GoogleSearch(params)
             results = search.get_dict()
             
-            if 'error' in results:
-                st.error(f"API Error: {results['error']}")
-                return []
+            if "error" in results:
+                st.error(f"SERP API Error: {results['error']}")
+                return None
             
-            return results.get('organic_results', [])
+            # Store AI Overview if available
+            self.last_ai_overview = results.get("ai_overview", None)
+            
+            return results.get("organic_results", [])
             
         except Exception as e:
             st.error(f"Search failed: {str(e)}")
-            return []
+            return None
     
-    def analyze_search_results(self, results):
-        """Analyze and categorize search results"""
-        categorized = {
-            "data_files": [],
-            "research_papers": [],
-            "official_sites": [],
-            "other": []
-        }
+    def extract_dataset_urls(self, search_results):
+        """Extract potential dataset URLs from search results with better filtering"""
+        dataset_candidates = []
         
-        for result in results:
-            title = result.get('title', '').lower()
-            link = result.get('link', '').lower()
-            snippet = result.get('snippet', '').lower()
+        # Exoplanet-specific keywords to verify relevance
+        exoplanet_keywords = ['exoplanet', 'koi', 'toi', 'kepler', 'tess', 'planet', 
+                             'transit', 'radial velocity', 'habitable', 'stellar', 
+                             'wasp', 'hat', 'corot', 'k2', 'jwst', 'disposition',
+                             'candidate', 'confirmed', 'false positive']
+        
+        # Known good domains
+        trusted_domains = ['exoplanetarchive.ipac.caltech.edu', 'nasa.gov', 'stsci.edu',
+                          'tess.mit.edu', 'asc-csa.gc.ca', 'cerit-sc.cz', 'swarthmore.edu',
+                          'github.com/nasa', 'kaggle.com']
+        
+        for result in search_results:
+            link = result.get('link', '')
+            title = result.get('title', '')
+            snippet = result.get('snippet', '')
+            domain = urlparse(link).netloc
             
-            # Categorize based on content
-            if any(ext in link for ext in ['.csv', '.txt', '.fits']) or 'download' in link:
-                categorized["data_files"].append(result)
-            elif any(term in title + snippet for term in ['paper', 'article', 'research', 'arxiv', 'doi']):
-                categorized["research_papers"].append(result)
-            elif any(site in link for site in ['nasa.gov', 'exoplanetarchive', 'asc-csa.gc.ca', 'jwst.nasa.gov']):
-                categorized["official_sites"].append(result)
-            else:
-                categorized["other"].append(result)
+            # Check for file extensions
+            has_data_extension = any(ext in link.lower() for ext in ['.csv', '.txt', '.json', '.fits', '.dat'])
+            
+            # Check for exoplanet relevance
+            content = (title + ' ' + snippet).lower()
+            is_exoplanet_related = any(keyword in content for keyword in exoplanet_keywords)
+            
+            # Check if it's from a trusted domain
+            is_trusted = any(trusted in domain for trusted in trusted_domains)
+            
+            # More strict filtering
+            if has_data_extension and (is_exoplanet_related or is_trusted):
+                # Verify it's not obviously unrelated
+                bad_indicators = ['example', 'test', 'demo', 'sample', 'art history', 
+                                'stopwords', 'embedding', 'validation.csv']
+                if not any(bad in content for bad in bad_indicators):
+                    dataset_candidates.append({
+                        'url': link,
+                        'title': title,
+                        'snippet': snippet,
+                        'domain': domain,
+                        'trusted': is_trusted,
+                        'relevance_score': sum(1 for kw in exoplanet_keywords if kw in content)
+                    })
         
-        return categorized
+        # Sort by relevance score and trusted status
+        dataset_candidates.sort(key=lambda x: (x['trusted'], x['relevance_score']), reverse=True)
+        
+        return dataset_candidates
     
-    def display_search_results(self, results, query):
-        """Display search results in organized format"""
-        if not results:
-            st.warning("No results found. Try different keywords or check your API key.")
-            return
-        
-        categorized = self.analyze_search_results(results)
-        
-        # Results summary
-        st.markdown("### 📊 Search Results Summary")
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>📁 {len(categorized['data_files'])}</h3>
-                <p>Data Files</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>📄 {len(categorized['research_papers'])}</h3>
-                <p>Research Papers</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🏛️ {len(categorized['official_sites'])}</h3>
-                <p>Official Sites</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🔗 {len(categorized['other'])}</h3>
-                <p>Other Results</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Display categorized results
-        for category, items in categorized.items():
-            if items:
-                st.markdown(f"### 📋 {category.replace('_', ' ').title()}")
-                
-                for i, result in enumerate(items):
-                    title = result.get('title', 'No title')
-                    link = result.get('link', '#')
-                    snippet = result.get('snippet', 'No description')
-                    
-                    st.markdown(f"""
-                    <div class="result-card">
-                        <h4><a href="{link}" target="_blank">{title}</a></h4>
-                        <p><strong>URL:</strong> <code>{link}</code></p>
-                        <p>{snippet}</p>
-                    </div>
-                    """, unsafe_allow_html=True)
-                    
-                    # Add download button for data files
-                    if category == "data_files":
-                        col1, col2 = st.columns([1, 3])
-                        with col1:
-                            if st.button(f"📥 Try Download", key=f"download_{i}_{category}"):
-                                self.attempt_download(link, f"search_result_{i}.csv")
-    
-    def attempt_download(self, url, filename):
-        """Attempt to download and preview a file"""
+    def download_file(self, url, filename):
+        """Download file from URL with progress tracking"""
         try:
-            with st.spinner("Downloading..."):
-                headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36'}
-                response = requests.get(url, headers=headers, timeout=30)
-                response.raise_for_status()
-                
-                # Try to read as CSV
-                try:
-                    df = pd.read_csv(url)
-                    if len(df) > 0:
-                        st.success(f"✅ Successfully downloaded: {len(df)} rows, {len(df.columns)} columns")
-                        
-                        # Save to data directory
-                        filepath = os.path.join(self.data_dir, filename)
-                        df.to_csv(filepath, index=False)
-                        
-                        # Show preview
-                        st.markdown("#### 👀 Data Preview")
-                        st.dataframe(df.head(10))
-                        
-                        # Show basic stats
-                        st.markdown("#### 📈 Basic Statistics")
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            st.metric("Total Rows", len(df))
-                            st.metric("Total Columns", len(df.columns))
-                        with col2:
-                            numeric_cols = df.select_dtypes(include=['number']).columns
-                            st.metric("Numeric Columns", len(numeric_cols))
-                            st.metric("Missing Values", df.isnull().sum().sum())
-                        
-                        return df
-                    else:
-                        st.warning("Downloaded file is empty")
-                        return None
-                except Exception as csv_error:
-                    st.error(f"Could not parse as CSV: {str(csv_error)}")
-                    return None
-                    
+            headers = {
+                'User-Agent': 'Mozilla/5.0 (compatible; ExoplanetSearch/1.0)'
+            }
+            
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
+            response.raise_for_status()
+            
+            filepath = os.path.join(self.data_dir, filename)
+            
+            # Create progress bar
+            total_size = int(response.headers.get('content-length', 0))
+            progress_bar = st.progress(0)
+            downloaded = 0
+            
+            with open(filepath, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+                        downloaded += len(chunk)
+                        if total_size > 0:
+                            progress = min(downloaded / total_size, 1.0)
+                            progress_bar.progress(progress)
+            
+            progress_bar.progress(1.0)
+            return filepath
+            
         except Exception as e:
             st.error(f"Download failed: {str(e)}")
             return None
-
-def main():
-    # Header
-    st.markdown('<h1 class="main-header">🔍 Exoplanet Data Hunter</h1>', unsafe_allow_html=True)
-    st.markdown("**Interactive Serp API Testing for Latest Exoplanet Datasets**")
     
-    # Initialize tester
-    tester = StreamlitSerpTester()
-    
-    # Check API key
-    if not tester.api_key or tester.api_key == 'your_api_key_here':
-        st.error("⚠️ Please configure your Serp API key in the .env file")
-        st.info("1. Copy .env.template to .env\n2. Add your API key from serpapi.com\n3. Restart the app")
-        return
-    
-    # Sidebar configuration
-    st.sidebar.markdown("## 🎛️ Search Configuration")
-    
-    # Mission type selector
-    mission_type = st.sidebar.selectbox(
-        "🎯 Select Mission/Dataset Type:",
-        options=list(tester.search_configs.keys()),
-        help="Choose the type of exoplanet data you want to search for"
-    )
-    
-    # Display mission description
-    if mission_type:
-        config = tester.search_configs[mission_type]
-        st.sidebar.markdown(f"**📝 Description:**")
-        st.sidebar.info(config["description"])
-        
-        st.sidebar.markdown(f"**🔍 Default Keywords:** {', '.join(config['keywords'][:3])}")
-        st.sidebar.markdown(f"**🌐 Target Sites:** {', '.join(config['sites'][:2])}")
-    
-    # Custom search options
-    st.sidebar.markdown("---")
-    custom_keywords = st.sidebar.text_input(
-        "➕ Additional Keywords (comma-separated):",
-        placeholder="e.g., atmospheric composition, transit photometry"
-    )
-    
-    year_range = st.sidebar.selectbox(
-        "📅 Time Range:",
-        ["2024-2025", "2023-2024", "2022-2025", "latest"],
-        index=0
-    )
-    
-    num_results = st.sidebar.slider(
-        "📊 Number of Results:",
-        min_value=5, max_value=20, value=10
-    )
-    
-    # Main search interface
-    st.markdown("---")
-    
-    # Search button
-    col1, col2, col3 = st.columns([2, 1, 2])
-    with col2:
-        search_button = st.button("🚀 Research Latest Datasets", type="primary")
-    
-    if search_button:
-        # Build and display query
-        query = tester.build_search_query(mission_type, custom_keywords, year_range)
-        
-        st.markdown("### 🔎 Search Query")
-        st.code(query, language="text")
-        
-        # Execute search
-        with st.spinner("🔍 Searching for latest datasets..."):
-            results = tester.search_serp(query, num_results)
-        
-        if results:
-            st.success(f"✅ Found {len(results)} results!")
-            tester.display_search_results(results, query)
+    def analyze_csv(self, filepath):
+        """Quick analysis of CSV file"""
+        try:
+            df = pd.read_csv(filepath)
             
-            # Save search history
-            search_record = {
-                "timestamp": datetime.now().isoformat(),
-                "mission_type": mission_type,
-                "query": query,
-                "num_results": len(results),
-                "custom_keywords": custom_keywords
+            analysis = {
+                'rows': len(df),
+                'columns': len(df.columns),
+                'numeric_cols': len(df.select_dtypes(include=['number']).columns),
+                'missing_percentage': (df.isnull().sum().sum() / (len(df) * len(df.columns))) * 100,
+                'file_size_mb': os.path.getsize(filepath) / (1024 * 1024),
+                'column_names': df.columns.tolist()[:10]  # First 10 columns
             }
             
-            # Load existing history
+            return analysis, df.head()
+            
+        except Exception as e:
+            return {'error': str(e)}, None
+
+def dataset_explorer_page():
+    """Dataset Explorer page for multi-page app"""
+    tester = StreamlitSerpTester()
+    
+    # Header
+    st.markdown('<h1 class="main-header">🔍 Exoplanet Data Hunter</h1>', 
+                unsafe_allow_html=True)
+    
+    st.markdown("**Discover and download the latest exoplanet datasets using advanced search**")
+    
+    # Sidebar - Simplified for narrow screens
+    st.sidebar.markdown("## 🎛️ Quick Search")
+    
+    # Mission type selection (simplified) - Default to "All Relevant Exoplanet Data"
+    mission_type = st.sidebar.selectbox(
+        "🚀 Select Mission:",
+        list(tester.search_configs.keys()),
+        index=0  # Default to first option (All Relevant Exoplanet Data)
+    )
+    
+    # Advanced options in expander
+    with st.sidebar.expander("⚙️ Options"):
+        max_results = st.slider("Max results:", 5, 100, 20)
+        custom_keywords = st.text_input("Extra keywords:", "")
+        
+        # Time frame filter
+        st.markdown("**🗓️ Time Frame**")
+        time_filter = st.selectbox(
+            "Search period:",
+            ["All time", "2025", "2024", "2023", "2022", "Last 2 years", "Last 5 years", "Custom range"]
+        )
+        
+        if time_filter == "Custom range":
+            col1, col2 = st.columns(2)
+            with col1:
+                start_year = st.number_input("From:", 2000, 2025, 2020)
+            with col2:
+                end_year = st.number_input("To:", 2000, 2025, 2025)
+        
+        auto_download = st.checkbox("Auto-download CSVs", False)
+    
+    # Main content area
+    st.markdown("---")
+    
+    # Compact action buttons
+    col1, col2 = st.columns(2)
+    with col1:
+        search_button = st.button("🔍 Search SERP API", type="primary", use_container_width=True)
+    with col2:
+        direct_fetch_button = st.button("📥 Download NASA Data", use_container_width=True)
+    
+    # Handle search button
+    if search_button:
+        config = tester.search_configs[mission_type]
+        
+        # Build search query
+        base_keywords = config['keywords'].copy()  # Make a copy to avoid modifying original
+        if custom_keywords:
+            base_keywords.append(custom_keywords)
+        
+        # Add time filter to query
+        time_suffix = ""
+        if time_filter == "2025":
+            time_suffix = " after:2025-01-01"
+        elif time_filter == "2024":
+            time_suffix = " after:2024-01-01 before:2025-01-01"
+        elif time_filter == "2023":
+            time_suffix = " after:2023-01-01 before:2024-01-01"
+        elif time_filter == "2022":
+            time_suffix = " after:2022-01-01 before:2023-01-01"
+        elif time_filter == "Last 2 years":
+            time_suffix = f" after:{datetime.now().year - 2}-01-01"
+        elif time_filter == "Last 5 years":
+            time_suffix = f" after:{datetime.now().year - 5}-01-01"
+        elif time_filter == "Custom range":
+            time_suffix = f" after:{start_year}-01-01 before:{end_year + 1}-01-01"
+        
+        search_query = ' OR '.join(base_keywords) + ' filetype:csv' + time_suffix
+        
+        with st.spinner(f"Searching for {mission_type} datasets..."):
+            results = tester.search_serp(search_query, max_results)
+        
+        if results:
+            st.success(f"Found {len(results)} search results!")
+            
+            # Extract dataset candidates
+            candidates = tester.extract_dataset_urls(results)
+            
+            # Show AI Overview if available
+            if hasattr(tester, 'last_ai_overview') and tester.last_ai_overview:
+                with st.expander("🤖 Google AI Overview"):
+                    ai_overview = tester.last_ai_overview
+                    if 'text_blocks' in ai_overview:
+                        for block in ai_overview['text_blocks']:
+                            if block['type'] == 'paragraph':
+                                st.markdown(block.get('snippet', ''))
+                            elif block['type'] == 'heading':
+                                st.markdown(f"**{block.get('snippet', '')}**")
+                            elif block['type'] == 'list' and 'list' in block:
+                                for item in block['list']:
+                                    st.markdown(f"- **{item.get('title', '')}** {item.get('snippet', '')}")
+            
+            if candidates:
+                st.markdown(f"### 📊 Dataset Candidates ({len(candidates)})")
+                
+                # Separate trusted from untrusted sources
+                trusted_candidates = [c for c in candidates if c.get('trusted', False)]
+                other_candidates = [c for c in candidates if not c.get('trusted', False)]
+                
+                if trusted_candidates:
+                    st.markdown("#### ✅ Trusted Sources")
+                    for i, candidate in enumerate(trusted_candidates):
+                        relevance_emoji = "🎯" if candidate.get('relevance_score', 0) > 2 else "🌟"
+                        with st.expander(f"{relevance_emoji} {candidate['title'][:60]}..."):
+                            col1, col2 = st.columns([3, 1])
+                            
+                            with col1:
+                                st.write(f"**Domain:** {candidate['domain']}")
+                                st.write(f"**Description:** {candidate['snippet']}")
+                                st.write(f"**Relevance Score:** {candidate.get('relevance_score', 0)} keywords matched")
+                                st.markdown(f"**Direct Link:** `{candidate['url'][:80]}...`")
+                            
+                            with col2:
+                                # Download button for each candidate
+                                if st.button(f"📥 Download", key=f"download_trusted_{i}"):
+                                    filename = f"dataset_{candidate['domain'].replace('.', '_')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                                    filepath = tester.download_file(candidate['url'], filename)
+                                    
+                                    if filepath:
+                                        st.success(f"✅ Downloaded: {filename}")
+                                        
+                                        # Quick analysis
+                                        analysis, preview = tester.analyze_csv(filepath)
+                                        if 'error' not in analysis:
+                                            st.write(f"📊 {analysis['rows']} rows, {analysis['columns']} cols, {analysis['file_size_mb']:.1f} MB")
+                                            if preview is not None:
+                                                st.dataframe(preview)
+                
+                if other_candidates:
+                    st.markdown("#### 🔍 Other Potential Sources")
+                    for i, candidate in enumerate(other_candidates):
+                        with st.expander(f"❓ {candidate['title'][:60]}..."):
+                            st.warning("⚠️ Unverified source - verify data relevance before use")
+                            st.write(f"**Domain:** {candidate['domain']}")
+                            st.write(f"**Description:** {candidate['snippet']}")
+                            st.write(f"**Relevance Score:** {candidate.get('relevance_score', 0)} keywords matched")
+                            
+                            # Download button with warning
+                            if st.button(f"📥 Download (Verify First)", key=f"download_other_{i}"):
+                                filename = f"unverified_{i}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv"
+                                filepath = tester.download_file(candidate['url'], filename)
+                                
+                                if filepath:
+                                    st.success(f"Downloaded: {filename}")
+                                    st.info("⚠️ Please verify this is exoplanet data before use")
+            
+            # Save search to history
             history_file = os.path.join(tester.data_dir, "search_history.json")
+            
+            # Load existing history
             try:
                 with open(history_file, 'r') as f:
                     history = json.load(f)
             except:
                 history = []
+            
+            # Add current search
+            search_record = {
+                'timestamp': datetime.now().isoformat(),
+                'mission_type': mission_type,
+                'query': search_query,
+                'num_results': len(results),
+                'candidates_found': len(candidates) if candidates else 0,
+                'custom_keywords': custom_keywords
+            }
             
             history.append(search_record)
             
@@ -397,6 +494,29 @@ def main():
         
         else:
             st.warning("No results found. Try adjusting your search parameters.")
+    
+    # Handle direct fetch button
+    if direct_fetch_button:
+        with st.spinner("Downloading NASA datasets..."):
+            try:
+                from direct_dataset_fetcher import DirectDatasetFetcher
+                fetcher = DirectDatasetFetcher()
+                results = fetcher.fetch_all_datasets()
+                
+                st.success(f"✅ Downloaded {results['total_datasets']} datasets!")
+                
+                # Show download results
+                if results['successful_downloads']:
+                    st.markdown("### 📥 Downloaded:")
+                    for download in results['successful_downloads']:
+                        st.markdown(f"- **{download['dataset_id'].replace('_', ' ')}**")
+                        st.caption(f"  📊 {download['rows']:,} rows, {download['columns']} columns")
+                
+                st.rerun()
+                
+            except Exception as e:
+                st.error(f"Download failed: {str(e)}")
+                st.info("💡 Try: `pip install requests pandas` and ensure you have internet connection")
     
     # Search history section
     st.markdown("---")
@@ -415,30 +535,192 @@ def main():
         except:
             st.info("No search history yet.")
     
-    # Quick stats
+    # Data Management Section (Simplified for Narrow Screens)
     st.markdown("---")
-    st.markdown("### 📈 Quick API Status")
+    st.markdown("### 📊 Data Files")
     
-    col1, col2, col3 = st.columns(3)
+    # List available CSV files
+    data_files = [f for f in os.listdir(tester.data_dir) if f.endswith('.csv')]
+    
+    if data_files:
+        st.markdown(f"**{len(data_files)} datasets available**")
+        
+        # Compact view for narrow screens
+        selected_file = st.selectbox("📁 Select dataset:", data_files)
+        
+        if selected_file:
+            file_path = os.path.join(tester.data_dir, selected_file)
+            file_size = os.path.getsize(file_path) / (1024 * 1024)  # MB
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                st.download_button(
+                    "⬇️ Download CSV", 
+                    data=open(file_path, 'rb').read(),
+                    file_name=selected_file,
+                    mime='text/csv',
+                    use_container_width=True
+                )
+            with col2:
+                if st.button("👁️ Preview", use_container_width=True):
+                    try:
+                        df = pd.read_csv(file_path)
+                        st.write(f"📊 {len(df)} rows × {len(df.columns)} columns ({file_size:.1f} MB)")
+                        st.dataframe(df.head())
+                    except Exception as e:
+                        st.error(f"Preview failed: {str(e)}")
+            
+            # Optional: Expandable analysis tools
+            if st.expander("🔧 Advanced Tools"):
+                st.markdown("**Quick Analysis**")
+                if st.button("📊 Analyze Selected", use_container_width=True):
+                    try:
+                        df = pd.read_csv(file_path)
+                        st.write(f"**Shape:** {len(df)} rows × {len(df.columns)} columns")
+                        
+                        # Show missing data
+                        missing = df.isnull().sum()
+                        if missing.any():
+                            st.write(f"**Missing data:** {missing.sum()} total")
+                        
+                        # Show numeric summary
+                        numeric_df = df.select_dtypes(include=['number'])
+                        if not numeric_df.empty:
+                            st.write(f"**Numeric columns:** {len(numeric_df.columns)}")
+                            st.dataframe(numeric_df.describe())
+                    except Exception as e:
+                        st.error(f"Analysis failed: {str(e)}")
+    else:
+        st.info("📁 No CSV files found. Use the 'Download NASA Data' button above to fetch datasets.")
+    
+    # Quick Update Check Section
+    st.markdown("---")
+    st.markdown("### 🔄 Dataset Update Monitor")
+    
+    # Show current search keywords for transparency
+    with st.expander("🔍 View Search Keywords Used by SERP API"):
+        config = tester.search_configs[mission_type]
+        st.markdown(f"**Current Mission: {mission_type}**")
+        st.markdown("**Keywords:**")
+        for keyword in config['keywords']:
+            st.markdown(f"- `{keyword}`")
+        st.markdown("**Target Sites:**")
+        for site in config['sites']:
+            st.markdown(f"- `{site}`")
+        st.markdown("**File Types:**")
+        for filetype in config['filetypes']:
+            st.markdown(f"- `{filetype}`")
+    
+    # Always-monitored datasets based on NASA Space Apps Challenge
+    st.markdown("#### 📊 Core NASA Datasets (Auto-Monitored)")
+    
+    core_datasets = {
+        "KOI (Kepler Objects of Interest)": {
+            "url": "https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI?table=cumulative&format=csv",
+            "host_site": "NASA Exoplanet Archive (Caltech/IPAC)",
+            "host_url": "https://exoplanetarchive.ipac.caltech.edu/",
+            "description": "Kepler mission data with 'Disposition Using Kepler Data' classification column",
+            "key_column": "koi_disposition",
+            "last_updated": "Continuously updated"
+        },
+        "TOI (TESS Objects of Interest)": {
+            "url": "https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI?table=toi&format=csv", 
+            "host_site": "NASA Exoplanet Archive (Caltech/IPAC)",
+            "host_url": "https://exoplanetarchive.ipac.caltech.edu/",
+            "description": "TESS data with 'TFOPWG Disposition' for PC, FP, APC, KP classifications",
+            "key_column": "tfopwg_disp",
+            "last_updated": "Updated monthly with new TESS sectors"
+        },
+        "K2 Planets and Candidates": {
+            "url": "https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI?table=k2pandc&format=csv",
+            "host_site": "NASA Exoplanet Archive (Caltech/IPAC)",
+            "host_url": "https://exoplanetarchive.ipac.caltech.edu/",
+            "description": "K2 mission data with 'Archive Disposition' classification",
+            "key_column": "k2c_disp",
+            "last_updated": "Mission complete, periodic updates"
+        },
+        "Confirmed Exoplanets": {
+            "url": "https://exoplanetarchive.ipac.caltech.edu/cgi-bin/nstedAPI/nph-nstedAPI?table=pscomppars&format=csv",
+            "host_site": "NASA Exoplanet Archive (Caltech/IPAC)",
+            "host_url": "https://exoplanetarchive.ipac.caltech.edu/",
+            "description": "NASA confirmed exoplanet catalog with planetary parameters",
+            "key_column": "pl_name",
+            "last_updated": "Updated weekly"
+        },
+        "SuperWASP Variable Stars": {
+            "url": "https://wasp.cerit-sc.cz/search",
+            "host_site": "SuperWASP Public Archive",
+            "host_url": "https://wasp.cerit-sc.cz/",
+            "description": "Wide Angle Search for Planets - 18M+ light curves",
+            "key_column": "swasp_id",
+            "last_updated": "Archive complete"
+        },
+        "NEOSSat Exoplanet Data": {
+            "url": "https://donnees-data.asc-csa.gc.ca/users/OpenData_DonneesOuvertes/pub/NEOSSat/",
+            "host_site": "Canadian Space Agency Open Data Portal",
+            "host_url": "https://www.asc-csa.gc.ca/eng/open-data/",
+            "description": "Canadian space telescope exoplanet observations",
+            "key_column": "target_name",
+            "last_updated": "Quarterly updates"
+        }
+    }
+    
+    # Additional Space Apps Challenge Resources
+    with st.expander("📚 NASA Space Apps Challenge Resources"):
+        st.markdown("**Research Papers & ML Resources:**")
+        st.markdown("- [Exoplanet Detection Using Machine Learning](https://arxiv.org/) - Overview of ML methods")
+        st.markdown("- [Ensemble-Based ML Algorithms for Exoplanet ID](https://arxiv.org/) - High accuracy techniques")
+        st.markdown("")
+        st.markdown("**Space Agency Partner Data:**")
+        st.markdown("- **NEOSSat (CSA)** - World's first space telescope for asteroids & exoplanets")
+        st.markdown("- **JWST** - Atmospheric spectroscopy and biosignature detection")
+        st.markdown("")
+        st.info("💡 The SERP API searches for these resources plus related datasets using enhanced keywords based on NASA Space Apps Challenge guidelines.")
+    
+    col1, col2 = st.columns([3, 1])
+    
     with col1:
-        if st.button("🧪 Test API Connection"):
-            with st.spinner("Testing..."):
-                test_results = tester.search_serp("exoplanet NASA", 3)
-                if test_results:
-                    st.success("✅ API Working!")
-                else:
-                    st.error("❌ API Issues")
+        for name, info in core_datasets.items():
+            st.markdown(f"**{name}**")
+            st.caption(f"{info['description']}")
+            st.markdown(f"🏛️ **Host:** [{info['host_site']}]({info['host_url']})")
+            st.markdown(f"📍 **Direct Data:** `{info['url'][:50]}...`")
+            st.markdown(f"🔄 **Updates:** {info['last_updated']}")
+            st.markdown("")
     
     with col2:
-        data_files = [f for f in os.listdir(tester.data_dir) if f.endswith('.csv')]
-        st.metric("📁 Downloaded Files", len(data_files))
+        st.markdown("**Quick Actions**")
+        if st.button("🔄 Check All Updates", type="primary", use_container_width=True):
+            with st.spinner("Checking for dataset updates..."):
+                try:
+                    from direct_dataset_fetcher import DirectDatasetFetcher
+                    fetcher = DirectDatasetFetcher()
+                    results = fetcher.fetch_all_datasets()
+                    st.success(f"✅ Updated! Found {results['total_datasets']} datasets")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Update check failed: {str(e)}")
+        
+        if st.button("📋 Show All Keywords", use_container_width=True):
+            st.markdown("**All Mission Keywords:**")
+            for mission, config in tester.search_configs.items():
+                st.markdown(f"**{mission}:**")
+                for keyword in config['keywords'][:2]:  # Show first 2
+                    st.caption(f"• {keyword}")
     
-    with col3:
-        if st.button("🗂️ View Data Directory"):
-            st.write("**Files in data directory:**")
-            for file in os.listdir(tester.data_dir):
-                st.write(f"- {file}")
+    # Footer
+    st.markdown("---")
+    st.markdown("### 🚀 About")
+    st.info("This interface combines SERP API discovery with direct NASA dataset fetching for exoplanet research.")
 
 
+# For standalone testing
 if __name__ == "__main__":
-    main()
+    # Run page configuration only when running standalone
+    st.set_page_config(
+        page_title="🔍 Exoplanet Data Hunter",
+        page_icon="🌟",
+        layout="wide",
+        initial_sidebar_state="expanded"
+    )
+    dataset_explorer_page()
