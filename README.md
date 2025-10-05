@@ -1,3 +1,9 @@
+# How to run 
+* install dependencies using pip
+* streamlit run main.py
+
+# Serp API (Local Austin Event Related)
+https://github.com/samarthssinghal/nasa-hunt-for-exoplanet/tree/serp
 
 
 
@@ -17,9 +23,3 @@
 * vscode 
 * pycharm
 
-# How to run 
-* install dependencies using pip
-* streamlit run main.py
-
-# Serp API (Local Austin Event Related)
-https://github.com/samarthssinghal/nasa-hunt-for-exoplanet/tree/serp
