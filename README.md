@@ -10,3 +10,9 @@
 * Generate ideas about how to improve accuracy
 * Generate the script for the demo
 * Fix errors. 
+
+# Tools used 
+* ChatGPT
+* Github Copilot (with Sonnet models)
+* vscode 
+* pycharm
