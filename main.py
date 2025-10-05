@@ -82,9 +82,9 @@ def build_unified(dfs):
 def normalize_label(x):
     if pd.isna(x): return None
     txt = str(x).strip().upper()
-    if 'CONFIRM' in txt: return 'Confirmed'
-    if txt in ('CANDIDATE','PC','KP','CP','CP (COMMUNITY)'): return 'Candidate'
-    if 'FALSE' in txt or txt=='FP': return 'False Positive'
+    if txt in ('CONFIRMED','CP','KP'): return 'Confirmed'
+    if txt in ('CANDIDATE','PC'): return 'Candidate'
+    if txt in ('FALSE POSITIVE', 'FP', 'APC', 'FA', 'REFUTED'): return 'False Positive'
     return txt.title()
 
 def clean_and_align(unified):
