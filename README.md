@@ -16,3 +16,7 @@
 * Github Copilot (with Sonnet models)
 * vscode 
 * pycharm
+
+# How to run 
+* install dependencies using pip
+* streamlit run main.py
